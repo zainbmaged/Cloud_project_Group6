@@ -19,13 +19,20 @@ aws s3 mb s3://25qgkp-all-data --region us-east-1
 aws s3 cp all.jsonl s3://25qgkp-all-data/raw/all.jsonl
 ```
 
-### Step 2 — Upload scripts to S3
+###  Upload scripts to S3
 ```bash
 s3://25qgkp-all-data/scripts/25qgkp_emr_preprocessing.py
 s3://25qgkp-all-data/scripts/bootstrap.sh
 ```
+### create Bootstrap Script
 
-### Step 3 — Create EMR cluster
+cat > /tmp/bootstrap.sh << 'EOF'
+#!/bin/bash
+sudo pip3 install matplotlib numpy pandas pyarrow fsspec s3fs datasets
+EOF
+aws s3 cp /tmp/bootstrap.sh s3://25qgkp-all-data/scripts/bootstrap.sh
+
+###  Create EMR cluster
 ```bash
 aws emr create-cluster \
   --name "25qgkp-emr" \
@@ -39,16 +46,32 @@ aws emr create-cluster \
   --log-uri s3://25qgkp-all-data/logs/ \
   --region us-east-1 \
   --ec2-attributes KeyName=25qgkp-keypair
+  --bootstrap-actions Path=s3://25qgkp-all-data/scripts/bootstrap.sh,Name="Install Python libs"
 ```
+### ssh connection EMR
+
+chmod 400 ~/25qgkp-keypair.pem
+ssh -i ~/25qgkp-keypair.pem hadoop@$(aws emr describe-cluster \
+  --cluster-id <your-cluster-id> \
+  --region us-east-1 \
+  --query "Cluster.MasterPublicDnsName" \
+  --output text)
+  
+
+
+
+### To install and verify the library
+sudo pip3 install xxhash
+sudo pip3 install boto3
+sudo pip3 install datasets==2.19.0 --ignore-installed
+python3 -c "import matplotlib, numpy, pandas, pyarrow, datasets; print('All libraries OK')"
 
 ### Step 4 — Submit PySpark job
 ```bash
-aws emr add-steps \
-  --cluster-id <your-cluster-id> \
-  --steps Type=Spark,Name="25qgkp-preprocessing",\
-ActionOnFailure=CONTINUE,\
-Args=[s3://25qgkp-all-data/scripts/25qgkp_emr_preprocessing.py] \
-  --region us-east-1
+spark-submit \
+  --master yarn \
+  --deploy-mode client \
+  s3://25qgkp-all-data/scripts/25qgkp_emr_preprocessing.py
 ```
 
 ### Step 5 — Terminate cluster after job completes
