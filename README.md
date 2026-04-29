@@ -66,3 +66,9 @@ aws emr terminate-clusters \
 | `s3://25qgkp-all-data/splits/test/` | Test split (36,052 rows) |
 
 ---
+## Cost Summary
+
+| AWS Service | Usage | Approx. Cost |
+|---|---|---|
+| EMR (m5.xlarge × 3 nodes) | ~1.5 hours | ~$0.90 |
+| S3 (25qgkp-all-data) | ~5 GB storage | ~$0.12 |
