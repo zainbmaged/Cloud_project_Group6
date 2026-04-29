@@ -28,9 +28,14 @@ s3://25qgkp-all-data/scripts/bootstrap.sh
 
 cat > /tmp/bootstrap.sh << 'EOF'
 #!/bin/bash
-sudo pip3 install matplotlib numpy pandas pyarrow fsspec s3fs datasets
+sudo pip3 install --upgrade pip
+sudo pip3 install matplotlib numpy pandas pyarrow fsspec s3fs boto3
+sudo pip3 install datasets --ignore-installed --no-deps
+sudo pip3 install huggingface-hub tqdm requests filelock --ignore-installed
 EOF
 aws s3 cp /tmp/bootstrap.sh s3://25qgkp-all-data/scripts/bootstrap.sh
+
+A bootstrap script (bootstrap.sh) was attached to the cluster to install the required Python libraries, including matplotlib, numpy, pandas, pyarrow, fsspec, s3fs, boto3, datasets, huggingface-hub, tqdm, requests, and filelock before the Spark job began.
 
 ###  Create EMR cluster
 aws emr create-cluster \
@@ -54,15 +59,6 @@ ssh -i ~/25qgkp-keypair.pem hadoop@$(aws emr describe-cluster \
   --region us-east-1 \
   --query "Cluster.MasterPublicDnsName" \
   --output text)
-  
-
-
-
-### To install and verify the library
-sudo pip3 install xxhash
-sudo pip3 install boto3
-sudo pip3 install datasets==2.19.0 --ignore-installed
-python3 -c "import matplotlib, numpy, pandas, pyarrow, datasets; print('All libraries OK')"
 
 ### Step 4 — Submit PySpark job
 ```bash
