@@ -9,11 +9,11 @@ Examples: `25qgkp-vpc`, `25qgkp-emr`, `25qgkp-all-data`, `25qgkp-ec2`
 
 
 ## Section 4 — Data Preprocessing with Apache Spark on EMR
-
-### Step 1 — Upload raw dataset to S3
+### Download dataset from HuggingFace 
+### Upload raw dataset to S3
 ```bash
-# Create S3 bucket
-aws s3 mb s3://25qgkp-all-data --region us-east-1
+# Create S3 bucket: 25qgkp-all-data
+upload all.jsonl to the raw directory likn: 3://25qgkp-all-data --region us-east-1
 
 # Download dataset from HuggingFace and upload to S3
 aws s3 cp all.jsonl s3://25qgkp-all-data/raw/all.jsonl
@@ -25,7 +25,7 @@ s3://25qgkp-all-data/scripts/25qgkp_emr_preprocessing.py
 s3://25qgkp-all-data/scripts/bootstrap.sh
 ```
 ### create Bootstrap Script
-
+```bash
 cat > /tmp/bootstrap.sh << 'EOF'
 #!/bin/bash
 sudo pip3 install --upgrade pip
@@ -34,10 +34,11 @@ sudo pip3 install datasets --ignore-installed --no-deps
 sudo pip3 install huggingface-hub tqdm requests filelock --ignore-installed
 EOF
 aws s3 cp /tmp/bootstrap.sh s3://25qgkp-all-data/scripts/bootstrap.sh
-
+```
 A bootstrap script (bootstrap.sh) was attached to the cluster to install the required Python libraries, including matplotlib, numpy, pandas, pyarrow, fsspec, s3fs, boto3, datasets, huggingface-hub, tqdm, requests, and filelock before the Spark job began.
 
 ###  Create EMR cluster
+```bash
 aws emr create-cluster \
   --name "25qgkp-emr" \
   --release-label emr-7.1.0 \
@@ -50,7 +51,7 @@ aws emr create-cluster \
   --region us-east-1 \
   --ec2-attributes KeyName=25qgkp-keypair \
   --use-default-roles
-  
+```
 ### ssh connection EMR
 
 chmod 400 ~/25qgkp-keypair.pem
