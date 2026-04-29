@@ -1,4 +1,7 @@
-# Cloud_project_Group6
+# CISC 886 — Cloud Computing Project Group 6
+
+**Institution:** Queen's University, School of Computing  
+**Region:** us-east-1 (N. Virginia)
 ---
 ## Resource Naming
 All AWS resources are prefixed with `25qgkp` per the course naming policy.  
