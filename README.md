@@ -33,7 +33,6 @@ EOF
 aws s3 cp /tmp/bootstrap.sh s3://25qgkp-all-data/scripts/bootstrap.sh
 
 ###  Create EMR cluster
-```bash
 aws emr create-cluster \
   --name "25qgkp-emr" \
   --release-label emr-7.1.0 \
@@ -41,13 +40,12 @@ aws emr create-cluster \
   --instance-groups \
     InstanceGroupType=MASTER,InstanceCount=1,InstanceType=m5.xlarge \
     InstanceGroupType=CORE,InstanceCount=2,InstanceType=m5.xlarge \
-  --bootstrap-actions \
-    Path=s3://25qgkp-all-data/scripts/bootstrap.sh \
+  --bootstrap-actions Name="Install Python libs",Path=s3://25qgkp-all-data/scripts/bootstrap.sh \
   --log-uri s3://25qgkp-all-data/logs/ \
   --region us-east-1 \
-  --ec2-attributes KeyName=25qgkp-keypair
-  --bootstrap-actions Path=s3://25qgkp-all-data/scripts/bootstrap.sh,Name="Install Python libs"
-```
+  --ec2-attributes KeyName=25qgkp-keypair \
+  --use-default-roles
+  
 ### ssh connection EMR
 
 chmod 400 ~/25qgkp-keypair.pem
