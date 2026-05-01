@@ -407,3 +407,322 @@ Also include the EDA image and screenshots used in the final report:
 figures/eda_report.png
 screenshots/section4/
 ```
+# Section 5 — Model Fine-Tuning
+
+Fine-tuning **LLaMA 3 8B** on the **StackMathQA** dataset using QLoRA (4-bit quantisation + LoRA adapters) via the Unsloth framework. The goal is to adapt the base model to produce structured, step-by-step mathematical responses in LaTeX notation without full parameter updates.
+
+---
+
+## Prerequisites
+
+| Requirement | Details |
+|---|---|
+| Python | 3.10 or later |
+| CUDA GPU | NVIDIA L4 (≈20 GB VRAM) — or any Ampere+ GPU with ≥16 GB VRAM |
+| Platform | Lightning AI Studios **or** Google Colab (T4 / A100) |
+| HuggingFace account | Required to push the merged model |
+| `clean_data.jsonl` | Preprocessed StackMathQA file from the S3 output of Section 4 |
+
+> **Note:** The notebook auto-detects whether it is running in Colab or locally and installs the correct dependency set.
+
+---
+
+## Repository Structure
+
+```
+
+## Step-by-Step Replication
+
+### Step 1 — Environment setup
+
+Open `Llama3_8B_final_finetuning_v3.ipynb` in Lightning AI Studios or Google Colab, then run the first cell:
+
+```python
+%%capture
+import os, re
+if "COLAB_" not in "".join(os.environ.keys()):
+    !pip install unsloth
+else:
+    import torch
+    v = re.match(r'[\d]{1,}\.[\d]{1,}', str(torch.__version__)).group(0)
+    xformers = 'xformers==' + {
+        '2.10': '0.0.34',
+        '2.9':  '0.0.33.post1',
+        '2.8':  '0.0.32.post2'
+    }.get(v, "0.0.34")
+    !pip install sentencepiece protobuf "datasets==4.3.0" "huggingface_hub>=0.34.0" hf_transfer
+    !pip install --no-deps unsloth_zoo bitsandbytes accelerate {xformers} peft trl triton unsloth
+
+!pip install transformers==4.56.2
+!pip install --no-deps trl==0.22.2
+```
+
+### Step 2 — Load the base model
+
+```python
+from unsloth import FastLanguageModel
+import torch
+
+max_seq_length = 512   # max tokens processed per sample (prompt + response)
+dtype          = None  # auto-detect: float16 for T4/V100, bfloat16 for Ampere+
+load_in_4bit   = True  # 4-bit NF4 quantisation — reduces VRAM to ~6-8 GB
+
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name   = "unsloth/llama-3-8b-bnb-4bit",
+    max_seq_length = max_seq_length,
+    dtype          = dtype,
+    load_in_4bit   = load_in_4bit,
+)
+```
+
+### Step 3 — Baseline test (optional but recommended)
+
+Run the two base-model test cells to record responses **before** fine-tuning. These are used later for the qualitative comparison.
+
+```python
+# Example baseline prompt
+messages = [{"role": "user", "content": "What is the derivative of x^2 + 3x?"}]
+inputs = tokenizer.apply_chat_template(
+    messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
+).to("cuda")
+_ = model.generate(inputs, streamer=text_streamer, max_new_tokens=512,
+                   eos_token_id=terminators, pad_token_id=tokenizer.eos_token_id)
+```
+
+### Step 4 — Inject LoRA adapters
+
+```python
+model = FastLanguageModel.get_peft_model(
+    model,
+    r              = 32,          # LoRA rank
+    target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
+                      "gate_proj", "up_proj", "down_proj"],
+    lora_alpha     = 64,          # scaling factor (= 2 × r)
+    lora_dropout   = 0,           # no dropout — large dataset
+    bias           = "none",
+    use_gradient_checkpointing = "unsloth",  # 30% less VRAM
+    random_state   = 3407,
+    use_rslora     = False,
+    loftq_config   = None,
+)
+```
+
+### Step 5 — Prepare the dataset
+
+Place `clean_data.jsonl` in the working directory (download from your S3 bucket or github), then run:
+
+```python
+import json
+
+raw = []
+with open("clean_data.jsonl", "r") as f:
+    for line in f:
+        if not line.strip():
+            continue
+        try:
+            raw.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+        if len(raw) == 50_000:
+            break
+
+print(f"Loaded rows: {len(raw):,}")
+```
+
+Convert to ShareGPT format and apply the Alpaca chat template:
+
+```python
+from unsloth import to_sharegpt, standardize_sharegpt, apply_chat_template
+
+dataset = to_sharegpt(
+    Dataset.from_list(raw),
+    merged_prompt       = "{instruction}",
+    output_column_name  = "output",
+    conversation_extension = 1,
+)
+dataset = standardize_sharegpt(dataset)
+
+chat_template = """Below are some instructions that describe some tasks. \
+Write responses that appropriately complete each request.
+
+### Instruction:
+{INPUT}
+
+### Response:
+{OUTPUT}"""
+
+dataset = apply_chat_template(dataset, tokenizer=tokenizer, chat_template=chat_template)
+dataset.save_to_disk("chat_dataset")
+print(f"Saved {len(dataset):,} rows to ./chat_dataset/")
+```
+
+### Step 6 — Train
+
+```python
+from trl import SFTConfig, SFTTrainer
+
+trainer = SFTTrainer(
+    model              = model,
+    tokenizer          = tokenizer,
+...
+)
+
+trainer_stats = trainer.train()
+```
+
+Expected output: training runs for **600 steps** (~76.7 minutes on an NVIDIA L4). Loss starts near **1.8** and plateaus around **1.3** from step 300 onward.
+
+### Step 7 — Plot the training loss curve
+
+```python
+import matplotlib.pyplot as plt
+
+log_history = trainer.state.log_history
+steps  = [x["step"] for x in log_history if "loss" in x]
+losses = [x["loss"] for x in log_history if "loss" in x]
+
+plt.figure(figsize=(10, 4))
+plt.plot(steps, losses)
+plt.xlabel("Step")
+plt.ylabel("Training Loss")
+plt.title("Training Loss Curve — LLaMA-3 8B LoRA Fine-Tuning")
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("training_loss_curve.png", dpi=150)
+plt.show()
+```
+
+### Step 8 — Test the fine-tuned model
+
+```python
+FastLanguageModel.for_inference(model)
+
+finetuned_prompt = """Below are some instructions that describe some tasks. \
+Write responses that appropriately complete each request.
+
+### Instruction:
+What is the derivative of x^2 + 3x?
+
+### Response:
+"""
+
+inputs = tokenizer(finetuned_prompt, return_tensors="pt").to("cuda")
+_ = model.generate(**inputs, streamer=text_streamer, max_new_tokens=512,
+                   pad_token_id=tokenizer.eos_token_id)
+```
+
+> LaTeX signs such as `$$...$$` and `$...$` are expected — they render correctly in the Ollama / OpenWebUI chat interface.
+
+### Step 9 — Save the model
+
+```python
+# Save LoRA adapters only
+model.save_pretrained("llama_lora")
+tokenizer.save_pretrained("llama_lora")
+
+# Save merged 16-bit model (needed for HuggingFace upload and Ollama)
+model.save_pretrained_merged("llama_finetune", tokenizer, save_method="merged_16bit")
+print("Saved to llama_finetune/")
+```
+
+### Step 10 — Upload to HuggingFace Hub
+
+Replace `HF_TOKEN` and `HF_USERNAME` with your own credentials:
+
+```python
+from huggingface_hub import HfApi
+
+HF_TOKEN    = "hf_YOUR_TOKEN_HERE"        # never commit a real token
+HF_USERNAME = "your-username"
+REPO_NAME   = f"{HF_USERNAME}/llama3-math-merged"
+
+api = HfApi()
+api.create_repo(REPO_NAME, exist_ok=True, token=HF_TOKEN)
+api.upload_folder(
+    folder_path = "llama_finetune/",
+    repo_id     = REPO_NAME,
+    token       = HF_TOKEN,
+)
+print(f"Uploaded to https://huggingface.co/{REPO_NAME}")
+```
+
+---
+
+## Hyperparameter Table
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| Base model | `unsloth/llama-3-8b-bnb-4bit` | 8B parameters, fits single L4 GPU in 4-bit |
+| LoRA rank (`r`) | 32 | Balances adapter capacity and memory |
+| LoRA alpha | 64 | Standard 2× rank scaling |
+| LoRA dropout | 0 | Not needed at this dataset scale |
+| Target modules | q, k, v, o, gate, up, down (7 total) | All attention + MLP projections |
+| Learning rate | 2e-4 | Standard for LoRA fine-tuning |
+| Batch size (per device) | 4 | |
+| Gradient accumulation steps | 4 | Effective batch size = 16 |
+| Warmup steps | 200 | Prevents early divergence |
+| Max steps | 600 | Hardware-constrained; loss converges by step 300 |
+| Optimizer | `adamw_8bit` | Memory-efficient AdamW |
+| LR scheduler | cosine | More stable than linear decay |
+| Max sequence length | 512 | Balances context coverage and VRAM |
+| Quantisation | 4-bit NF4 (QLoRA) | ~6–8 GB VRAM for frozen weights |
+| Sequence packing | Enabled | Up to 5× faster for avg. token length < 1024 |
+| Trainable parameters | 83,886,080 | ≈ 1.03% of total 8B |
+| Random seed | 3407 | Reproducibility |
+
+---
+
+## Evaluation
+
+Evaluation is run on **200 held-out samples** (rows 50,000–51,000 of `clean_data.jsonl`, never seen during training) using three proxy metrics:
+
+| Metric | What it measures |
+|---|---|
+| Token F1 | Bag-of-words overlap between prediction and reference tokens |
+| ROUGE-L | Longest-common-subsequence recall — captures sequential structure |
+| Step Proxy | Fraction of responses containing ≥ 3 LaTeX math blocks or structured steps |
+
+### Results
+
+| Metric | Base Model | Fine-Tuned Model |
+|---|---|---|
+| Token F1 | 0.0877 | **0.0940** |
+| ROUGE-L | 0.1644 | **0.1744** |
+| Step Proxy | 0.7400 | 0.6800 |
+
+Token F1 and ROUGE-L improve, confirming better alignment with reference answer vocabulary and structure. The Step Proxy decrease reflects a style shift: the fine-tuned model embeds reasoning inline with LaTeX notation rather than producing numbered lists, which is the dominant style in StackMathQA. LLM-as-a-judge would be a more informative metric but was not available for this project.
+
+---
+
+## Qualitative Comparison
+
+### Example 1 — Linear Equation
+
+| | Response |
+|---|---|
+| **Base model** | `### Instruction: Solve for y: 4y + 2 = 14` → `### Response: y = 3` |
+| **Fine-tuned** | `### Instruction: Solve for x: 2x + 5 = 13` → `### Response: $$2x+5=13$$ $$2x=8$$ $$x=4$$` |
+
+### Example 2 — Derivative
+
+| | Response |
+|---|---|
+| **Base model** | `The derivative of x^2 + 3x + 4 is 2x + 3.` |
+| **Fine-tuned** | `If $f(x)$ is a polynomial, the derivative has degree one less. Thus $f'(x) = 2x + 3$.` |
+
+The fine-tuned model produces LaTeX-formatted, step-by-step explanations that match the StackMathQA dataset style.
+
+---
+
+## Hardware Used
+
+| Component | Specification |
+|---|---|
+| Platform | Lightning AI Studios (cloud GPU) |
+| GPU | NVIDIA L4 (single device) |
+| GPU VRAM | ≈ 20 GB |
+| Precision | 4-bit NF4 (QLoRA); bfloat16 compute |
+| Training time | ≈ 76.7 minutes (600 steps) |
+
+---
+
