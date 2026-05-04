@@ -434,7 +434,7 @@ Libraries used:
 | Trainable parameters | 83,886,080 | About 1.03% of 8B model |
 
 ### 8.4 Loss curve
-
+![image](https://github.com/zainbmaged/Cloud_project_Group6/blob/main/Screenshots/finetune/download%20(45).png?raw=true)
 The loss started around 1.8 and decreased to around 1.3. It mostly plateaued after about step 300, with normal small spikes. This suggests the model learned the main formatting and domain style patterns from the selected training subset within the 600-step run.
 
 ### 8.5 Base model vs fine-tuned model examples
