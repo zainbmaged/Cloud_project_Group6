@@ -346,7 +346,7 @@ spark-submit \
 
 ### 7.7 EDA interpretation
 
-![Architecture Diagram](<img width="2036" height="2877" alt="EDA_Report_EMR" src="https://github.com/user-attachments/assets/6c277df4-15bc-4111-9228-0e5a76db5042" />)
+![EDA_Report_EMR](https://github.com/user-attachments/assets/6c277df4-15bc-4111-9228-0e5a76db5042)
 Three EDA checks were used.
 
 **Plot 1: Text Length Distribution (Q vs A)**
