@@ -574,7 +574,7 @@ These metrics are useful proxies but do not fully prove mathematical correctness
 | Name | `25qgkp-ec2` |
 | Instance ID shown in screenshots | `i-089bdfd81e32c9908` |
 | Instance type | `t3.xlarge` |
-| OS | Ubuntu 24.04 |
+| OS | AMI: ami-05cf1e9f73fbad2e2 (Ubuntu Server 24.04 LTS)|
 | Private IP shown | `10.0.6.215` |
 | Public IP | Dynamic public IP from EC2 Console; no Elastic IP was attached |
 | Elastic IP | Not used |
