@@ -30,7 +30,7 @@ https://github.com/zainbmaged/Cloud_project_Group6.git
 | Security group | `25qgkp-sg` |
 | EC2 instance | `25qgkp-ec2` |
 | EC2 instance type | `t3.xlarge` |
-| EC2 operating system | Ubuntu 24.04 |
+| EC2 operating system |  AMI: ami-05cf1e9f73fbad2e2 (Ubuntu Server 24.04 LTS)|
 | EC2 private IP shown in screenshots | `10.0.6.215` |
 | EC2 public IP | Dynamic public IP from EC2 Console; use `<EC2_PUBLIC_IP>` in commands because no Elastic IP was attached |
 | Ollama local API | `localhost:11434` |
