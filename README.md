@@ -6,14 +6,6 @@ This repository contains the final CISC 886 Cloud Computing project for Group 6.
 
 The final user experience is a browser-based chat interface. The user opens OpenWebUI on port `8080`, selects the fine-tuned model, and sends math questions. OpenWebUI talks to Ollama locally on the EC2 instance through `localhost:11434`. Ollama serves the fine-tuned GGUF model.
 
-The project was implemented in three connected parts:
-
-| Area | Team member | Main work completed |
-|---|---|---|
-| Infrastructure and deployment | Ahmed Mohamed Al Shobaki - 20596291 | Custom VPC, public subnet, Internet Gateway, route table, security group, EC2, Ollama, curl API testing, OpenWebUI, cost evidence, final integration |
-| Data preprocessing | Fatma Yousuf Abu Al Wafa - 20596315 | StackMathQA S3 layout, EMR cluster, PySpark preprocessing, quality filtering, EDA, train/validation/test splits, S3 output evidence |
-| Fine-tuning | Zainb Maged Arafa Zahran - 20596293 | LLaMA 3 8B model selection, Unsloth + QLoRA fine-tuning, evaluation, loss curve, GGUF export, Hugging Face artifact |
-
 GitHub repository:
 
 ```text
