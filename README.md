@@ -297,6 +297,13 @@ s3://25qgkp-all-data/logs/
 | Bootstrap script | `s3://25qgkp-all-data/scripts/bootstrap.sh` |
 | PySpark script | `s3://25qgkp-all-data/scripts/25qgkp_emr_preprocessing.py` |
 
+Expected script paths:
+
+```text
+s3://25qgkp-all-data/scripts/25qgkp_emr_preprocessing.py
+s3://25qgkp-all-data/scripts/bootstrap.sh
+```
+
 ### 7.4 Bootstrap script
 
 ```bash
@@ -305,6 +312,91 @@ sudo pip3 install --upgrade pip
 sudo pip3 install matplotlib numpy pandas pyarrow fsspec s3fs boto3
 sudo pip3 install datasets --ignore-installed --no-deps
 sudo pip3 install huggingface-hub tqdm requests filelock --ignore-installed
+```
+
+### Create EMR Cluster
+
+The preprocessing pipeline was run on an AWS EMR cluster named `25qgkp-emr`.
+
+Cluster configuration:
+
+| Parameter | Value |
+|---|---|
+| Cluster name | `25qgkp-emr` |
+| Region | `us-east-1` |
+| EMR release | `emr-7.1.0` |
+| Application | Spark |
+| Master node | 1 × `m5.xlarge` |
+| Core nodes | 2 × `m5.xlarge` |
+| Task nodes | 0 |
+| Log path | `s3://25qgkp-all-data/logs/` |
+| Key pair | `25qgkp-keypair` |
+
+Create the EMR cluster:
+
+```bash
+aws emr create-cluster \
+  --name "25qgkp-emr" \
+  --release-label emr-7.1.0 \
+  --applications Name=Spark \
+  --instance-groups \
+    InstanceGroupType=MASTER,InstanceCount=1,InstanceType=m5.xlarge \
+    InstanceGroupType=CORE,InstanceCount=2,InstanceType=m5.xlarge \
+  --bootstrap-actions Name="Install Python libs",Path=s3://25qgkp-all-data/scripts/bootstrap.sh \
+  --log-uri s3://25qgkp-all-data/logs/ \
+  --region us-east-1 \
+  --ec2-attributes KeyName=25qgkp-keypair \
+  --use-default-roles
+```
+
+After running the command, save the returned EMR cluster ID. It will look like:
+
+```text
+j-XXXXXXXXXXXXX
+```
+
+---
+
+## 6. SSH Connection to EMR Master Node
+
+Set permissions on the key pair:
+
+```bash
+chmod 400 ~/25qgkp-keypair.pem
+```
+
+Connect to the EMR master node:
+
+```bash
+ssh -i ~/25qgkp-keypair.pem hadoop@$(aws emr describe-cluster \
+  --cluster-id <your-cluster-id> \
+  --region us-east-1 \
+  --query "Cluster.MasterPublicDnsName" \
+  --output text)
+```
+
+Replace:
+
+```text
+<your-cluster-id>
+```
+
+with the actual EMR cluster ID.
+
+---
+
+## 7. Optional Library Verification
+
+After connecting to the EMR master node, verify the required libraries:
+
+```bash
+python3 -c "import matplotlib, numpy, pandas, pyarrow, boto3, datasets; print('All libraries OK')"
+```
+
+Expected output:
+
+```text
+All libraries OK
 ```
 
 ### 7.5 PySpark preprocessing logic
@@ -320,6 +412,8 @@ The preprocessing script performs the following steps:
 7. Converts cleaned rows into instruction-following format.
 8. Creates EDA statistics and plots.
 9. Writes `processed/clean_data` and `splits/train`, `splits/validation`, `splits/test` back to S3.
+
+
 
 Preprocessing settings:
 
