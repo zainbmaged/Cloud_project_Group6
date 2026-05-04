@@ -81,7 +81,7 @@ Cloud_project_Group6/
 
 ## 4. System Architecture
 
-![description](<img width="1602" height="982" alt="01-architecture-diagram" src="https://github.com/user-attachments/assets/e93f84f8-aff8-410a-96f5-465000d05451" />)
+![Architecture Diagram](https://github.com/user-attachments/assets/e93f84f8-aff8-410a-96f5-465000d05451)
 
 The system is divided into three zones.
 
